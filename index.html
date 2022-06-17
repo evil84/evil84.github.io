@@ -31,170 +31,51 @@
       switchTab();
       window.addEventListener('hashchange', switchTab, false);
   })();
-  </script><!-- hexo injector head_end end --><meta name="generator" content="Hexo 6.2.0"></head><body class="is-2-column"><nav class="navbar navbar-main"><div class="container navbar-container"><div class="navbar-brand justify-content-center"><a class="navbar-item navbar-logo" href="/"><img src="/img/logo.svg" alt="Hexo" height="28"></a></div><div class="navbar-menu"><div class="navbar-start"><a class="navbar-item is-active" href="/">Home</a><a class="navbar-item" href="/archives">Archives</a><a class="navbar-item" href="/categories">Categories</a><a class="navbar-item" href="/tags">Tags</a><a class="navbar-item" href="/about">About</a></div><div class="navbar-end"><a class="navbar-item" target="_blank" rel="noopener" title="Download on GitHub" href="https://github.com/ppoffice/hexo-theme-icarus"><i class="fab fa-github"></i></a><a class="navbar-item search" title="Search" href="javascript:;"><i class="fas fa-search"></i></a></div></div></div></nav><section class="section"><div class="container"><div class="columns"><div class="column order-2 column-main is-8-tablet is-8-desktop is-8-widescreen"><div class="card"><article class="card-content article" role="article"><div class="article-meta is-size-7 is-uppercase level is-mobile"><div class="level-left"><span class="level-item">Posted&nbsp;<time dateTime="2021-06-16T14:00:00.000Z" title="2021/6/16 22:00:00">2021-06-16</time></span><span class="level-item">Updated&nbsp;<time dateTime="2022-06-17T15:18:33.463Z" title="2022/6/17 23:18:33">2022-06-17</time></span><span class="level-item"><a class="link-muted" href="/categories/Ray-Tracing-from-the-Ground-Up/">Ray Tracing from the Ground Up</a></span><span class="level-item">11 minutes read (About 1594 words)</span></div></div><h1 class="title is-3 is-size-4-mobile"><a class="link-muted" href="/2021/06/16/Sampling%20BRDF/">Sampling BRDF</a></h1><div class="content"><p>[TOC]<br>
-## 基本概念
-
-1. $Pdf(\omega)$ : 立体角上的概率密度函数 （平常我们采样函数返回的pdf是这个）
-2. $Pdf(\theta, \phi)$ : 球面坐标系上的概率密度函数 
-3. $Pdf(\theta) = \int_0^\pi Pdf(\theta, \phi) d\phi$: $Pdf(\theta, \phi)$关于$\theta$的边缘概率密度函数
-4. $Pdf(\phi | \theta) = \frac{Pdf(\theta, \phi)}{Pdf(\theta)}$: $\phi$关于$\theta$的条件概率密度函数
-5. 我们有在(0, 1)范围内均匀分布概率的随机函数，生成的随机数我们定义为$\epsilon$,想计算出满足指定概率分布的随机数，这个时候需要用到逆变换采样(Inverse transform sampling)，首先对pdf求cdf：$cdf(x) = \int_{-\infty}^x{f(t)dt}$，然后令$\epsilon = cdf(x)$, 然后我们只需要求出$cdf^{-1}(x)$即是满足该概率分布的随机数。
-
-## Uniform Sample Hemisphere
-
-我们需要对整个半球均匀采样，假设我们不知道半球的概率密度函数是什么，我们设它为: 
-
-$$Pdf(\omega) = c$$
-
-,由概率定义可知，其在半球上的立体角的积分为1：
-
-$$\int_{\Omega^2}{c}d\omega = 1$$
-
-转换为球面积分：
-
-$$\int_{\Omega^2}{c}sin(\theta){d\theta}{d\phi} = 1$$
-
-求解：
-
-$$\int_0^{\frac{\pi}{2}}{sin(\theta)} \int_0^{2\pi}d\phi d\theta = 2\pi c$$
-
-要令$2\pi c = 1$,那么可知$c = \frac{1}{2\pi}$，可知，$Pdf(\omega) = \frac{1}{2\pi}$, $Pdf(\theta,\phi) = \frac{sin(\theta)}{2\pi}$
-
-知道了$Pdf$,现在来计算采样向量，假设我们有2D随机变量E，由分层采样或者低偏差序列而来，x,y分别都在0到1之间随机分布，先计算关于$\theta$的边缘概率密度函数：
-
-$$Pdf(\theta) = \int_0^{2\pi} \frac{1}{2\pi} sin(\theta) d\phi = sin(\theta)$$
-
-然后计算累积分布函数：
-
-$$CDf(\theta) = \int_0^{\theta} sin(t) dt = 1 - cos(\theta)$$
-
-令$\epsilon_1 = 1 - cos(\theta)$，可知$cos(\theta) = 1 - \epsilon_1$，又因$\epsilon_1, \epsilon_2$都在$(0..1)$范围内均匀分布，故可以用$\epsilon_1$替换$1-\epsilon_1$,这样可知$\theta = cos^{-1}(\epsilon_1)$。
-
-继续求$Cdf(\phi | \theta)$：
-
-$$Pdf(\phi | \theta) = \frac{Pdf(\theta, \phi)}{Pdf(\theta)} = \frac{\frac{sin(\theta)}{2\pi}}{sin(\theta)} = \frac{1}{2\pi}$$
-
-$$Cdf(\phi | \theta) = \int_0^{\phi} \frac{1}{2\pi} dt = \frac{\phi}{2\pi}$$
-
-令$\epsilon_2 = \frac{\phi}{2\pi}$, 可知$\phi = 2 \pi \epsilon_2$。
-
-转换到球面坐标系，我们这里用UE的坐标系，z轴向上，球的半径为1，那么笛卡尔坐标系和球面坐标系的关系为：
-
-$$ x = sin(\theta) cos(\phi) $$
-
-$$ y = sin(\theta) sin(\phi) $$
-
-$$z = cos(\theta)$$
-
-令$E.x = \epsilon_2, E.y = \epsilon_1$, 可知：
-
-$cos(\theta) = E.y$
-
-$sin(\theta) = \sqrt[2]{1 - E.y * E.y}$
-
-$$cos(\phi) = cos(2 *\pi * E.x)$$
-
-$$sin(\phi) = sin(2 *\pi * E.x)$$
-
-这样就可以求出$x,y,z$分别的值了。
-
-UE5代码参考：
-
+  </script><!-- hexo injector head_end end --><meta name="generator" content="Hexo 6.2.0"></head><body class="is-2-column"><nav class="navbar navbar-main"><div class="container navbar-container"><div class="navbar-brand justify-content-center"><a class="navbar-item navbar-logo" href="/"><img src="/img/logo.svg" alt="Hexo" height="28"></a></div><div class="navbar-menu"><div class="navbar-start"><a class="navbar-item is-active" href="/">Home</a><a class="navbar-item" href="/archives">Archives</a><a class="navbar-item" href="/categories">Categories</a><a class="navbar-item" href="/tags">Tags</a><a class="navbar-item" href="/about">About</a></div><div class="navbar-end"><a class="navbar-item" target="_blank" rel="noopener" title="Download on GitHub" href="https://github.com/ppoffice/hexo-theme-icarus"><i class="fab fa-github"></i></a><a class="navbar-item search" title="Search" href="javascript:;"><i class="fas fa-search"></i></a></div></div></div></nav><section class="section"><div class="container"><div class="columns"><div class="column order-2 column-main is-8-tablet is-8-desktop is-8-widescreen"><div class="card"><article class="card-content article" role="article"><div class="article-meta is-size-7 is-uppercase level is-mobile"><div class="level-left"><span class="level-item">Posted&nbsp;<time dateTime="2021-06-16T14:00:00.000Z" title="2021/6/16 22:00:00">2021-06-16</time></span><span class="level-item">Updated&nbsp;<time dateTime="2022-06-17T16:08:19.806Z" title="2022/6/18 00:08:19">2022-06-18</time></span><span class="level-item"><a class="link-muted" href="/categories/Ray-Tracing-from-the-Ground-Up/">Ray Tracing from the Ground Up</a></span><span class="level-item">10 minutes read (About 1547 words)</span></div></div><h1 class="title is-3 is-size-4-mobile"><a class="link-muted" href="/2021/06/16/Sampling%20BRDF/">Sampling BRDF</a></h1><div class="content"><p>[TOC]</p>
+<h2 id="基本概念"><a href="#基本概念" class="headerlink" title="基本概念"></a>基本概念</h2><ol>
+<li>$Pdf(\omega)$ : 立体角上的概率密度函数 （平常我们采样函数返回的pdf是这个）</li>
+<li>$Pdf(\theta, \phi)$ : 球面坐标系上的概率密度函数 </li>
+<li>$Pdf(\theta) = \int_0^\pi Pdf(\theta, \phi) d\phi$: $Pdf(\theta, \phi)$关于$\theta$的边缘概率密度函数</li>
+<li>$Pdf(\phi | \theta) = \frac{Pdf(\theta, \phi)}{Pdf(\theta)}$: $\phi$关于$\theta$的条件概率密度函数</li>
+<li>我们有在(0, 1)范围内均匀分布概率的随机函数，生成的随机数我们定义为$\epsilon$,想计算出满足指定概率分布的随机数，这个时候需要用到逆变换采样(Inverse transform sampling)，首先对pdf求cdf：$cdf(x) = \int_{-\infty}^x{f(t)dt}$，然后令$\epsilon = cdf(x)$, 然后我们只需要求出$cdf^{-1}(x)$即是满足该概率分布的随机数。</li>
+</ol>
+<h2 id="Uniform-Sample-Hemisphere"><a href="#Uniform-Sample-Hemisphere" class="headerlink" title="Uniform Sample Hemisphere"></a>Uniform Sample Hemisphere</h2><p>我们需要对整个半球均匀采样，假设我们不知道半球的概率密度函数是什么，我们设它为: </p>
+<script type="math/tex; mode=display">Pdf(\omega) = c</script><p>,由概率定义可知，其在半球上的立体角的积分为1：</p>
+<script type="math/tex; mode=display">\int_{\Omega^2}{c}d\omega = 1</script><p>转换为球面积分：</p>
+<script type="math/tex; mode=display">\int_{\Omega^2}{c}sin(\theta){d\theta}{d\phi} = 1</script><p>求解：</p>
+<script type="math/tex; mode=display">\int_0^{\frac{\pi}{2}}{sin(\theta)} \int_0^{2\pi}d\phi d\theta = 2\pi c</script><p>要令$2\pi c = 1$,那么可知$c = \frac{1}{2\pi}$，可知，$Pdf(\omega) = \frac{1}{2\pi}$, $Pdf(\theta,\phi) = \frac{sin(\theta)}{2\pi}$</p>
+<p>知道了$Pdf$,现在来计算采样向量，假设我们有2D随机变量E，由分层采样或者低偏差序列而来，x,y分别都在0到1之间随机分布，先计算关于$\theta$的边缘概率密度函数：</p>
+<script type="math/tex; mode=display">Pdf(\theta) = \int_0^{2\pi} \frac{1}{2\pi} sin(\theta) d\phi = sin(\theta)</script><p>然后计算累积分布函数：</p>
+<script type="math/tex; mode=display">CDf(\theta) = \int_0^{\theta} sin(t) dt = 1 - cos(\theta)</script><p>令$\epsilon_1 = 1 - cos(\theta)$，可知$cos(\theta) = 1 - \epsilon_1$，又因$\epsilon_1, \epsilon_2$都在$(0..1)$范围内均匀分布，故可以用$\epsilon_1$替换$1-\epsilon_1$,这样可知$\theta = cos^{-1}(\epsilon_1)$。</p>
+<p>继续求$Cdf(\phi | \theta)$：</p>
+<script type="math/tex; mode=display">Pdf(\phi | \theta) = \frac{Pdf(\theta, \phi)}{Pdf(\theta)} = \frac{\frac{sin(\theta)}{2\pi}}{sin(\theta)} = \frac{1}{2\pi}</script><script type="math/tex; mode=display">Cdf(\phi | \theta) = \int_0^{\phi} \frac{1}{2\pi} dt = \frac{\phi}{2\pi}</script><p>令$\epsilon_2 = \frac{\phi}{2\pi}$, 可知$\phi = 2 \pi \epsilon_2$。</p>
+<p>转换到球面坐标系，我们这里用UE的坐标系，z轴向上，球的半径为1，那么笛卡尔坐标系和球面坐标系的关系为：</p>
+<script type="math/tex; mode=display">x = sin(\theta) cos(\phi)</script><script type="math/tex; mode=display">y = sin(\theta) sin(\phi)</script><script type="math/tex; mode=display">z = cos(\theta)</script><p>令$E.x = \epsilon_2, E.y = \epsilon_1$, 可知：</p>
+<p>$cos(\theta) = E.y$</p>
+<p>$sin(\theta) = \sqrt[2]{1 - E.y * E.y}$</p>
+<script type="math/tex; mode=display">cos(\phi) = cos(2 *\pi * E.x)</script><script type="math/tex; mode=display">sin(\phi) = sin(2 *\pi * E.x)</script><p>这样就可以求出$x,y,z$分别的值了。</p>
+<p>UE5代码参考：</p>
 <figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">float4 <span class="title">UniformSampleHemisphere</span><span class="params">( float2 E )</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">	<span class="type">float</span> Phi = <span class="number">2</span> * PI * E.x;</span><br><span class="line">	<span class="type">float</span> CosTheta = E.y;</span><br><span class="line">	<span class="type">float</span> SinTheta = <span class="built_in">sqrt</span>( <span class="number">1</span> - CosTheta * CosTheta );</span><br><span class="line"></span><br><span class="line">	float3 H;</span><br><span class="line">	H.x = SinTheta * <span class="built_in">cos</span>( Phi );</span><br><span class="line">	H.y = SinTheta * <span class="built_in">sin</span>( Phi );</span><br><span class="line">	H.z = CosTheta;</span><br><span class="line"></span><br><span class="line">	<span class="type">float</span> PDF = <span class="number">1.0</span> / (<span class="number">2</span> * PI);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="built_in">float4</span>( H, PDF );</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-
-
-## Cosine Weight Sample Hemisphere
-
-通常我们采样时，会根据brdf的形状生成想要的概率分布，常用的漫反射模型如lambert，oren-nayar等都可以用这个分布去采样，他们的特点是平行于法线的贡献高，所以需要在这附近多生成射线，越靠近垂直于法线的贡献低，生成的射线越少，也算是重要性采样(importance sampling)的一种。
-
-同样，我们假设不知道$pdf$是什么，考虑到$cos(\theta)$的加权，我们假设为：
-
-$$Pdf(\omega) = c cos(\theta) $$
-
-立体角上的半球积分，：
-
-$$\int_{\Omega^2} c cos(\theta) d{\omega} = 1$$
-
-转换到球面积分：
-
-$$\int_{\Omega^2}c cos(\theta) sin(\theta){d\theta}{d\phi} = 1$$
-
-求解：
-
-$$\int_0^{\frac{\pi}{2}}{c cos(\theta) sin(\theta)} \int_0^{2\pi}d\phi d\theta = \pi c$$
-
-要令$\pi c = 1$，那么可知$c = \frac{1}{\pi}$, 考虑到$cos(\theta)$加权，可知$Pdf(\omega) = \frac{cos(\theta)}{\pi}$，  $Pdf(\theta, \phi) = \frac{\cos(\theta) \sin(\theta)}{\pi}$。
-
-仿照上例，先计算关于$\theta$的边缘概率密度函数：
-
-$$Pdf(\theta) = \int_0^{2\pi} \frac{cos(\theta)}{\pi} sin(\theta) d\phi = 2 cos(\theta)sin(\theta)$$
-
-然后计算累计分布函数：
-
-$$Cdf(\theta) = \int_0^{\theta}2cos(\theta)sin(\theta) = 1-{{\cos^2{\left( \theta \right) }}}$$
-
-令$\epsilon_1 = 1 - cos^2(\theta)$，可知$\theta = cos^{-1}\sqrt{1 - \epsilon_1}$，同理用$\epsilon_1$替换$1-\epsilon_1$，可得$\theta = cos^{-1}\sqrt{\epsilon_1}$
-
-继续求$Cdf(\phi | \theta)$：
-
-$$Pdf(\phi | \theta) = \frac{Pdf(\theta, \phi)}{Pdf(\theta)} = \frac{\frac{\cos(\theta) \sin(\theta)}{\pi}}{2 cos(\theta)sin(\theta)} = \frac{1}{2\pi}$$
-
-$$Cdf(\phi | \theta) = \int_0^{\phi} \frac{1}{2\pi} dt = \frac{\phi}{2\pi}$$
-
-令$\epsilon_2 = \frac{\phi}{2\pi}$, 可知$\phi = 2 \pi \epsilon_2$。
-
-知道$\theta$和$\phi$的值，其他计算同上，这里就省略了。
-
-UE5代码参考：
-<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">float4 <span class="title">CosineSampleHemisphere</span><span class="params">( float2 E )</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">	<span class="type">float</span> Phi = <span class="number">2</span> * PI * E.x;</span><br><span class="line">	<span class="type">float</span> CosTheta = <span class="built_in">sqrt</span>(E.y);</span><br><span class="line">	<span class="type">float</span> SinTheta = <span class="built_in">sqrt</span>(<span class="number">1</span> - CosTheta * CosTheta);</span><br><span class="line"></span><br><span class="line">	float3 H;</span><br><span class="line">	H.x = SinTheta * <span class="built_in">cos</span>(Phi);</span><br><span class="line">	H.y = SinTheta * <span class="built_in">sin</span>(Phi);</span><br><span class="line">	H.z = CosTheta;</span><br><span class="line"></span><br><span class="line">	<span class="type">float</span> PDF = CosTheta * (<span class="number">1.0</span> / PI);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="built_in">float4</span>(H, PDF);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-
-## Microfacet BRDF Sampling
-
-接下来考虑微表面的情况，按Cook-Torrance公式来说，我们知道，对Specular Lobe形状影响最大的主要来自于法线分布函数（Normal Distribute Function)，所以我们需要生成满足法线分布函数分布概率的采样向量，注意，NDF并不完全等于概率密度函数，需要考虑到微观表面到宏观表面的投影，这里我们就不展开了，直接列公式（这里$D(m)$代表法线分布函数NDF）：
-
-$$\int_{\Omega^2}D(m)cos(\theta_m)d\omega = 1$$
-
-下面我们把常见的NDF都推导一遍，同时需要考虑各向同性和各项异性两种情况。
-
-### GGX isotropic
-
-$$D_{GGX}(m,\alpha) = \frac{a^2}{\pi ( cos^2(\theta)(a^2 - 1) + 1)^2} $$
-
-$$Pdf(\omega) = \frac{a^2 cos(\theta)}{\pi ( cos^2(\theta)(a^2 - 1) + 1)^2}$$
-
-$$Pdf(\theta, \phi) = \frac{a^2 cos(\theta) sin(\theta)}{\pi ( cos^2(\theta)(a^2 - 1) + 1)^2}$$
-
-$$Pdf(\theta) = \int_0^{2\pi}\frac{a^2 cos(\theta) sin(\theta)}{\pi ( cos^2(\theta)(a^2 - 1) + 1)^2}d\phi = \frac{2 {{a}^{2}} \cos{(\theta)} \sin{(\theta)}}{{{\left( \\cos^2{(\theta)} ({{a}^{2}}-1)+1\right) }^{2}}}$$ 
-
-$$Pdf(\phi|\theta)= \frac{Pdf(\theta,\phi)}{Pdf(\theta)} = \frac{\frac{a^2 cos(\theta) sin(\theta)}{\pi ( cos^2(\theta)(a^2 - 1) + 1)^2}}{\frac{2 {{a}^{2}} \cos{(\theta)} \sin{(\theta)}}{{{\left( \cos^2{(\theta)} ({{a}^{2}}-1)+1\right) }^{2}}}} = \frac{1}{2\pi}$$
-
-$$Cdf(\theta) = \int_0^{\theta}\frac{2 {{a}^{2}} \cos{(t)} \sin{(t)}}{{{\left( \\cos^2{(t)} ({{a}^{2}}-1)+1\right) }^{2}}}dt = -\frac{cos^2(\theta) - 1}{( {{a}^{2}}-1)  {{cos^2{( \theta ) }}}+1}$$
-
-令$\epsilon = -\frac{cos^2(\theta) - 1}{( {{a}^{2}}-1)  {{cos^2{( \theta ) }}}+1}$，可知$\theta = cos^{-1}\left( \sqrt{\frac{1-\epsilon}{\left( {{a}^{2}}-1\right)  \epsilon+1}}\right)$
-
-求解$\phi$同上，这里就不赘述了。
-
-UE5代码参考：
-
+<h2 id="Cosine-Weight-Sample-Hemisphere"><a href="#Cosine-Weight-Sample-Hemisphere" class="headerlink" title="Cosine Weight Sample Hemisphere"></a>Cosine Weight Sample Hemisphere</h2><p>通常我们采样时，会根据brdf的形状生成想要的概率分布，常用的漫反射模型如lambert，oren-nayar等都可以用这个分布去采样，他们的特点是平行于法线的贡献高，所以需要在这附近多生成射线，越靠近垂直于法线的贡献低，生成的射线越少，也算是重要性采样(importance sampling)的一种。</p>
+<p>同样，我们假设不知道$pdf$是什么，考虑到$cos(\theta)$的加权，我们假设为：</p>
+<script type="math/tex; mode=display">Pdf(\omega) = c cos(\theta)</script><p>立体角上的半球积分，：</p>
+<script type="math/tex; mode=display">\int_{\Omega^2} c cos(\theta) d{\omega} = 1</script><p>转换到球面积分：</p>
+<script type="math/tex; mode=display">\int_{\Omega^2}c cos(\theta) sin(\theta){d\theta}{d\phi} = 1</script><p>求解：</p>
+<script type="math/tex; mode=display">\int_0^{\frac{\pi}{2}}{c cos(\theta) sin(\theta)} \int_0^{2\pi}d\phi d\theta = \pi c</script><p>要令$\pi c = 1$，那么可知$c = \frac{1}{\pi}$, 考虑到$cos(\theta)$加权，可知$Pdf(\omega) = \frac{cos(\theta)}{\pi}$，  $Pdf(\theta, \phi) = \frac{\cos(\theta) \sin(\theta)}{\pi}$。</p>
+<p>仿照上例，先计算关于$\theta$的边缘概率密度函数：</p>
+<script type="math/tex; mode=display">Pdf(\theta) = \int_0^{2\pi} \frac{cos(\theta)}{\pi} sin(\theta) d\phi = 2 cos(\theta)sin(\theta)</script><p>然后计算累计分布函数：</p>
+<script type="math/tex; mode=display">Cdf(\theta) = \int_0^{\theta}2cos(\theta)sin(\theta) = 1-cos^2(\theta)</script><p>令$\epsilon_1 = 1 - cos^2(\theta)$，可知$\theta = cos^{ -1 }\sqrt{ 1 - \epsilon_1 }$，同理用$\epsilon_1$替换$1-\epsilon_1$，可得$\theta = cos^{-1} \sqrt{\epsilon_1}$</p>
+<p>继续求$Cdf(\phi | \theta)$：</p>
+<script type="math/tex; mode=display">Pdf(\phi | \theta) = \frac{Pdf(\theta, \phi)}{Pdf(\theta)} = \frac{\frac{\cos(\theta) \sin(\theta)}{\pi}}{2 cos(\theta)sin(\theta)} = \frac{1}{2\pi}</script><script type="math/tex; mode=display">Cdf(\phi | \theta) = \int_0^{\phi} \frac{1}{2\pi} dt = \frac{\phi}{2\pi}</script><p>令$\epsilon_2 = \frac{\phi}{2\pi}$, 可知$\phi = 2 \pi \epsilon_2$。</p>
+<p>知道$\theta$和$\phi$的值，其他计算同上，这里就省略了。</p>
+<p>UE5代码参考：<br><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">float4 <span class="title">CosineSampleHemisphere</span><span class="params">( float2 E )</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">	<span class="type">float</span> Phi = <span class="number">2</span> * PI * E.x;</span><br><span class="line">	<span class="type">float</span> CosTheta = <span class="built_in">sqrt</span>(E.y);</span><br><span class="line">	<span class="type">float</span> SinTheta = <span class="built_in">sqrt</span>(<span class="number">1</span> - CosTheta * CosTheta);</span><br><span class="line"></span><br><span class="line">	float3 H;</span><br><span class="line">	H.x = SinTheta * <span class="built_in">cos</span>(Phi);</span><br><span class="line">	H.y = SinTheta * <span class="built_in">sin</span>(Phi);</span><br><span class="line">	H.z = CosTheta;</span><br><span class="line"></span><br><span class="line">	<span class="type">float</span> PDF = CosTheta * (<span class="number">1.0</span> / PI);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="built_in">float4</span>(H, PDF);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<h2 id="Microfacet-BRDF-Sampling"><a href="#Microfacet-BRDF-Sampling" class="headerlink" title="Microfacet BRDF Sampling"></a>Microfacet BRDF Sampling</h2><p>接下来考虑微表面的情况，按Cook-Torrance公式来说，我们知道，对Specular Lobe形状影响最大的主要来自于法线分布函数（Normal Distribute Function)，所以我们需要生成满足法线分布函数分布概率的采样向量，注意，NDF并不完全等于概率密度函数，需要考虑到微观表面到宏观表面的投影，这里我们就不展开了，直接列公式（这里$D(m)$代表法线分布函数NDF）：</p>
+<script type="math/tex; mode=display">\int_{\Omega^2}D(m)cos(\theta_m)d\omega = 1</script><p>下面我们把常见的NDF都推导一遍，同时需要考虑各向同性和各项异性两种情况。</p>
+<h3 id="GGX-isotropic"><a href="#GGX-isotropic" class="headerlink" title="GGX isotropic"></a>GGX isotropic</h3><script type="math/tex; mode=display">D_{GGX}(m,\alpha) = \frac{a^2}{\pi ( cos^2(\theta)(a^2 - 1) + 1)^2}</script><script type="math/tex; mode=display">Pdf(\omega) = \frac{a^2 cos(\theta)}{\pi ( cos^2(\theta)(a^2 - 1) + 1)^2}</script><script type="math/tex; mode=display">Pdf(\theta, \phi) = \frac{a^2 cos(\theta) sin(\theta)}{\pi ( cos^2(\theta)(a^2 - 1) + 1)^2}</script><script type="math/tex; mode=display">Pdf(\theta) = \int_0^{2\pi}\frac{a^2 cos(\theta) sin(\theta)}{\pi ( cos^2(\theta)(a^2 - 1) + 1)^2}d\phi = \frac{2a^2cos(\theta)sin(\theta)}{(cos^2(\theta)(a^2-1)+1)^2}</script><script type="math/tex; mode=display">Pdf(\phi|\theta)= \frac{\frac{a^2 cos(\theta) sin(\theta)}{\pi ( cos^2(\theta)(a^2 - 1) + 1)^2}}{\frac{2a^2cos(\theta)sin(\theta)}{(cos^2(\theta)(a^2-1)+1)^2}} = \frac{1}{2\pi}</script><script type="math/tex; mode=display">Cdf(\theta) = \int_0^{\theta}\frac{2a^2cos(t)sin(t)}{(cos^2(t)(a^2-1)+1)^2}dt = -\frac{cos^2(\theta)-1}{(a^2-1)  cos^2(\theta)+1}</script><p>令$\epsilon = -\frac{cos^2(\theta)-1}{(a^2-1)  cos^2(\theta)+1}$，可知$\theta = cos^{-1}(\sqrt{\frac{1-\epsilon}{(a^2-1)\epsilon+1}})$</p>
+<p>求解$\phi$同上，这里就不赘述了。</p>
+<p>UE5代码参考：</p>
 <figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">float4 <span class="title">ImportanceSampleGGX</span><span class="params">( float2 E, <span class="type">float</span> a2 )</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">	<span class="type">float</span> Phi = <span class="number">2</span> * PI * E.x;</span><br><span class="line">	<span class="type">float</span> CosTheta = <span class="built_in">sqrt</span>( (<span class="number">1</span> - E.y) / ( <span class="number">1</span> + (a2 - <span class="number">1</span>) * E.y ) );</span><br><span class="line">	<span class="type">float</span> SinTheta = <span class="built_in">sqrt</span>( <span class="number">1</span> - CosTheta * CosTheta );</span><br><span class="line"></span><br><span class="line">	float3 H;</span><br><span class="line">	H.x = SinTheta * <span class="built_in">cos</span>( Phi );</span><br><span class="line">	H.y = SinTheta * <span class="built_in">sin</span>( Phi );</span><br><span class="line">	H.z = CosTheta;</span><br><span class="line">	</span><br><span class="line">	<span class="type">float</span> d = ( CosTheta * a2 - CosTheta ) * CosTheta + <span class="number">1</span>;</span><br><span class="line">	<span class="type">float</span> D = a2 / ( PI*d*d );</span><br><span class="line">	<span class="type">float</span> PDF = D * CosTheta;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="built_in">float4</span>( H, PDF );</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-### GGX anisotropic
-
-$$D_{GGX\_aniso}(m,\alpha) = \frac{1}{\pi \alpha_t \alpha_b} \frac{1}{((\frac{t \cdot m}{\alpha_t})^2 + (\frac{b \cdot m}{\alpha_b})^2 + (n \cdot m)^2)^2}$$
-
-
-### beckmann isotropic
-
-### beckmann anisotropic
-
-### blinn phong
-
-
-
-
-</p>
-</div></article></div></div><div class="column column-left is-4-tablet is-4-desktop is-4-widescreen  order-1"><div class="card widget" data-type="profile"><div class="card-content"><nav class="level"><div class="level-item has-text-centered flex-shrink-1"><div><figure class="image is-128x128 mx-auto mb-2"><img class="avatar" src="/img/avatar.png" alt="evil84"></figure><p class="title is-size-4 is-block" style="line-height:inherit;">evil84</p><p class="is-size-6 is-block">A Graphics Programmer</p><p class="is-size-6 is-flex justify-content-center"><i class="fas fa-map-marker-alt mr-1"></i><span>Chengdu, China</span></p></div></div></nav><nav class="level is-mobile"><div class="level-item has-text-centered is-marginless"><div><p class="heading">Post</p><a href="/archives"><p class="title">1</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">Category</p><a href="/categories"><p class="title">1</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">Tag</p><a href="/tags"><p class="title">1</p></a></div></div></nav><div class="level"><a class="level-item button is-primary is-rounded" href="https://github.com/ppoffice" target="_blank" rel="noopener">Follow</a></div><div class="level is-mobile is-multiline"><a class="level-item button is-transparent is-marginless" target="_blank" rel="noopener" title="Github" href="https://github.com/ppoffice"><i class="fab fa-github"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="noopener" title="Facebook" href="https://facebook.com"><i class="fab fa-facebook"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="noopener" title="Twitter" href="https://twitter.com"><i class="fab fa-twitter"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="noopener" title="Dribbble" href="https://dribbble.com"><i class="fab fa-dribbble"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="noopener" title="RSS" href="/"><i class="fas fa-rss"></i></a></div></div></div><!--!--><div class="card widget" data-type="links"><div class="card-content"><div class="menu"><h3 class="menu-label">Links</h3><ul class="menu-list"><li><a class="level is-mobile" href="https://hexo.io" target="_blank" rel="noopener"><span class="level-left"><span class="level-item">Hexo</span></span><span class="level-right"><span class="level-item tag">hexo.io</span></span></a></li><li><a class="level is-mobile" href="https://bulma.io" target="_blank" rel="noopener"><span class="level-left"><span class="level-item">Bulma</span></span><span class="level-right"><span class="level-item tag">bulma.io</span></span></a></li></ul></div></div></div><div class="card widget" data-type="categories"><div class="card-content"><div class="menu"><h3 class="menu-label">Categories</h3><ul class="menu-list"><li><a class="level is-mobile" href="/categories/Ray-Tracing-from-the-Ground-Up/"><span class="level-start"><span class="level-item">Ray Tracing from the Ground Up</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li></ul></div></div></div><div class="card widget" data-type="recent-posts"><div class="card-content"><h3 class="menu-label">Recents</h3><article class="media"><div class="media-content"><p class="date"><time dateTime="2021-06-16T14:00:00.000Z">2021-06-16</time></p><p class="title"><a href="/2021/06/16/Sampling%20BRDF/">Sampling BRDF</a></p><p class="categories"><a href="/categories/Ray-Tracing-from-the-Ground-Up/">Ray Tracing from the Ground Up</a></p></div></article></div></div><div class="card widget" data-type="archives"><div class="card-content"><div class="menu"><h3 class="menu-label">Archives</h3><ul class="menu-list"><li><a class="level is-mobile" href="/archives/2021/06/"><span class="level-start"><span class="level-item">June 2021</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li></ul></div></div></div><div class="card widget" data-type="tags"><div class="card-content"><div class="menu"><h3 class="menu-label">Tags</h3><div class="field is-grouped is-grouped-multiline"><div class="control"><a class="tags has-addons" href="/tags/Ray-Tracing-from-the-Ground-Up/"><span class="tag">Ray Tracing from the Ground Up</span><span class="tag">1</span></a></div></div></div></div></div><div class="card widget" data-type="subscribe-email"><div class="card-content"><div class="menu"><h3 class="menu-label">Subscribe for updates</h3><form action="https://feedburner.google.com/fb/a/mailverify" method="post" target="popupwindow" onsubmit="window.open(&#039;https://feedburner.google.com/fb/a/mailverify?uri=&#039;,&#039;popupwindow&#039;,&#039;scrollbars=yes,width=550,height=520&#039;);return true"><input type="hidden" value="" name="uri"><input type="hidden" name="loc" value="en_US"><div class="field has-addons"><div class="control has-icons-left is-expanded"><input class="input" name="email" type="email" placeholder="Email"><span class="icon is-small is-left"><i class="fas fa-envelope"></i></span></div><div class="control"><input class="button" type="submit" value="Subscribe"></div></div></form></div></div></div><div class="card widget"><div class="card-content"><div class="notification is-danger">You need to set <code>client_id</code> and <code>slot_id</code> to show this AD unit. Please set it in <code>_config.yml</code>.</div></div></div><div class="card widget" data-type="subscribe-email"><div class="card-content"><div class="menu"><h3 class="menu-label">follow.it</h3><form action="" method="post" target="_blank"><div class="field has-addons"><div class="control has-icons-left is-expanded"><input class="input" name="email" type="email" placeholder="Email"><span class="icon is-small is-left"><i class="fas fa-envelope"></i></span></div><div class="control"><input class="button" type="submit" value="Subscribe"></div></div></form></div></div></div></div><!--!--></div></div></section><footer class="footer"><div class="container"><div class="level"><div class="level-start"><a class="footer-logo is-block mb-2" href="/"><img src="/img/logo.svg" alt="Hexo" height="28"></a><p class="is-size-7"><span>&copy; 2022 John Doe</span>  Powered by <a href="https://hexo.io/" target="_blank" rel="noopener">Hexo</a> &amp; <a href="https://github.com/ppoffice/hexo-theme-icarus" target="_blank" rel="noopener">Icarus</a></p></div><div class="level-end"><div class="field has-addons"><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Creative Commons" href="https://creativecommons.org/"><i class="fab fa-creative-commons"></i></a></p><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Attribution 4.0 International" href="https://creativecommons.org/licenses/by/4.0/"><i class="fab fa-creative-commons-by"></i></a></p><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Download on GitHub" href="https://github.com/ppoffice/hexo-theme-icarus"><i class="fab fa-github"></i></a></p></div></div></div></div></footer><script src="https://cdn.jsdelivr.net/npm/jquery@3.3.1/dist/jquery.min.js"></script><script src="https://cdn.jsdelivr.net/npm/moment@2.22.2/min/moment-with-locales.min.js"></script><script src="https://cdn.jsdelivr.net/npm/clipboard@2.0.4/dist/clipboard.min.js" defer></script><script>moment.locale("en");</script><script>var IcarusThemeSettings = {
+<h3 id="GGX-anisotropic"><a href="#GGX-anisotropic" class="headerlink" title="GGX anisotropic"></a>GGX anisotropic</h3><h3 id="beckmann-isotropic"><a href="#beckmann-isotropic" class="headerlink" title="beckmann isotropic"></a>beckmann isotropic</h3><h3 id="beckmann-anisotropic"><a href="#beckmann-anisotropic" class="headerlink" title="beckmann anisotropic"></a>beckmann anisotropic</h3><h3 id="blinn-phong"><a href="#blinn-phong" class="headerlink" title="blinn phong"></a>blinn phong</h3></div></article></div></div><div class="column column-left is-4-tablet is-4-desktop is-4-widescreen  order-1"><div class="card widget" data-type="profile"><div class="card-content"><nav class="level"><div class="level-item has-text-centered flex-shrink-1"><div><figure class="image is-128x128 mx-auto mb-2"><img class="avatar" src="/img/avatar.png" alt="evil84"></figure><p class="title is-size-4 is-block" style="line-height:inherit;">evil84</p><p class="is-size-6 is-block">A Graphics Programmer</p><p class="is-size-6 is-flex justify-content-center"><i class="fas fa-map-marker-alt mr-1"></i><span>Chengdu, China</span></p></div></div></nav><nav class="level is-mobile"><div class="level-item has-text-centered is-marginless"><div><p class="heading">Post</p><a href="/archives"><p class="title">1</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">Category</p><a href="/categories"><p class="title">1</p></a></div></div><div class="level-item has-text-centered is-marginless"><div><p class="heading">Tag</p><a href="/tags"><p class="title">1</p></a></div></div></nav><div class="level"><a class="level-item button is-primary is-rounded" href="https://github.com/ppoffice" target="_blank" rel="noopener">Follow</a></div><div class="level is-mobile is-multiline"><a class="level-item button is-transparent is-marginless" target="_blank" rel="noopener" title="Github" href="https://github.com/ppoffice"><i class="fab fa-github"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="noopener" title="Facebook" href="https://facebook.com"><i class="fab fa-facebook"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="noopener" title="Twitter" href="https://twitter.com"><i class="fab fa-twitter"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="noopener" title="Dribbble" href="https://dribbble.com"><i class="fab fa-dribbble"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="noopener" title="RSS" href="/"><i class="fas fa-rss"></i></a></div></div></div><!--!--><div class="card widget" data-type="links"><div class="card-content"><div class="menu"><h3 class="menu-label">Links</h3><ul class="menu-list"><li><a class="level is-mobile" href="https://hexo.io" target="_blank" rel="noopener"><span class="level-left"><span class="level-item">Hexo</span></span><span class="level-right"><span class="level-item tag">hexo.io</span></span></a></li><li><a class="level is-mobile" href="https://bulma.io" target="_blank" rel="noopener"><span class="level-left"><span class="level-item">Bulma</span></span><span class="level-right"><span class="level-item tag">bulma.io</span></span></a></li></ul></div></div></div><div class="card widget" data-type="categories"><div class="card-content"><div class="menu"><h3 class="menu-label">Categories</h3><ul class="menu-list"><li><a class="level is-mobile" href="/categories/Ray-Tracing-from-the-Ground-Up/"><span class="level-start"><span class="level-item">Ray Tracing from the Ground Up</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li></ul></div></div></div><div class="card widget" data-type="recent-posts"><div class="card-content"><h3 class="menu-label">Recents</h3><article class="media"><div class="media-content"><p class="date"><time dateTime="2021-06-16T14:00:00.000Z">2021-06-16</time></p><p class="title"><a href="/2021/06/16/Sampling%20BRDF/">Sampling BRDF</a></p><p class="categories"><a href="/categories/Ray-Tracing-from-the-Ground-Up/">Ray Tracing from the Ground Up</a></p></div></article></div></div><div class="card widget" data-type="archives"><div class="card-content"><div class="menu"><h3 class="menu-label">Archives</h3><ul class="menu-list"><li><a class="level is-mobile" href="/archives/2021/06/"><span class="level-start"><span class="level-item">June 2021</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li></ul></div></div></div><div class="card widget" data-type="tags"><div class="card-content"><div class="menu"><h3 class="menu-label">Tags</h3><div class="field is-grouped is-grouped-multiline"><div class="control"><a class="tags has-addons" href="/tags/Ray-Tracing-from-the-Ground-Up/"><span class="tag">Ray Tracing from the Ground Up</span><span class="tag">1</span></a></div></div></div></div></div><div class="card widget" data-type="subscribe-email"><div class="card-content"><div class="menu"><h3 class="menu-label">Subscribe for updates</h3><form action="https://feedburner.google.com/fb/a/mailverify" method="post" target="popupwindow" onsubmit="window.open(&#039;https://feedburner.google.com/fb/a/mailverify?uri=&#039;,&#039;popupwindow&#039;,&#039;scrollbars=yes,width=550,height=520&#039;);return true"><input type="hidden" value="" name="uri"><input type="hidden" name="loc" value="en_US"><div class="field has-addons"><div class="control has-icons-left is-expanded"><input class="input" name="email" type="email" placeholder="Email"><span class="icon is-small is-left"><i class="fas fa-envelope"></i></span></div><div class="control"><input class="button" type="submit" value="Subscribe"></div></div></form></div></div></div><div class="card widget"><div class="card-content"><div class="notification is-danger">You need to set <code>client_id</code> and <code>slot_id</code> to show this AD unit. Please set it in <code>_config.yml</code>.</div></div></div><div class="card widget" data-type="subscribe-email"><div class="card-content"><div class="menu"><h3 class="menu-label">follow.it</h3><form action="" method="post" target="_blank"><div class="field has-addons"><div class="control has-icons-left is-expanded"><input class="input" name="email" type="email" placeholder="Email"><span class="icon is-small is-left"><i class="fas fa-envelope"></i></span></div><div class="control"><input class="button" type="submit" value="Subscribe"></div></div></form></div></div></div></div><!--!--></div></div></section><footer class="footer"><div class="container"><div class="level"><div class="level-start"><a class="footer-logo is-block mb-2" href="/"><img src="/img/logo.svg" alt="Hexo" height="28"></a><p class="is-size-7"><span>&copy; 2022 John Doe</span>  Powered by <a href="https://hexo.io/" target="_blank" rel="noopener">Hexo</a> &amp; <a href="https://github.com/ppoffice/hexo-theme-icarus" target="_blank" rel="noopener">Icarus</a></p></div><div class="level-end"><div class="field has-addons"><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Creative Commons" href="https://creativecommons.org/"><i class="fab fa-creative-commons"></i></a></p><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Attribution 4.0 International" href="https://creativecommons.org/licenses/by/4.0/"><i class="fab fa-creative-commons-by"></i></a></p><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Download on GitHub" href="https://github.com/ppoffice/hexo-theme-icarus"><i class="fab fa-github"></i></a></p></div></div></div></div></footer><script src="https://cdn.jsdelivr.net/npm/jquery@3.3.1/dist/jquery.min.js"></script><script src="https://cdn.jsdelivr.net/npm/moment@2.22.2/min/moment-with-locales.min.js"></script><script src="https://cdn.jsdelivr.net/npm/clipboard@2.0.4/dist/clipboard.min.js" defer></script><script>moment.locale("en");</script><script>var IcarusThemeSettings = {
             article: {
                 highlight: {
                     clipboard: true,
